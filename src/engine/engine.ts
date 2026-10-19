@@ -194,8 +194,10 @@ function nextTurn(s: GameState) {
   startTurn(s)
 }
 
-function endDraw(s: GameState) {
-  s.result = { winners: [], declarer: null, reason: '所有玩家都已出局，平手。' }
+function endDraw(s: GameState, oneLeft = false) {
+  const reason = oneLeft ? '只剩一位玩家存活且無人達成勝利條件，平手。' : '所有玩家都已出局，平手。'
+  s.result = { winners: [], declarer: null, reason }
+  log(s, `★ ${reason}`)
   s.phase = 'over'
   revealAll(s)
 }
@@ -302,7 +304,7 @@ function checkVictory(s: GameState) {
     }
     if (pl.faction === 'neutral' && missionMet(s, p)) return declare(s, p, 'mission')
   }
-  if (aliveSeats(s).length === 0) endDraw(s)
+  if (aliveSeats(s).length <= 1) endDraw(s, aliveSeats(s).length === 1)
 }
 
 function declare(s: GameState, p: number, why: 'faction' | 'mission') {
@@ -779,16 +781,18 @@ export function applyAction(state: GameState, p: number, a: Action): GameState {
         break
       }
       if (a.type === 'play_card') {
+        let pa = a
         const ctx = currentCtx(s)
-        const lp = legalPlays(s, p, ctx).find((x) => x.card === a.card)
+        const lp = legalPlays(s, p, ctx).find((x) => x.card === pa.card)
         if (!lp) fail('這張牌現在不能使用')
-        if (lp!.targets && (a.target == null || !lp!.targets.includes(a.target))) fail('請選擇合法的目標')
-        if (lp!.refs && !lp!.refs.some((r) => r.ref === a.targetRef && r.target === a.target)) {
-          if (lp!.refs.length === 1 && lp!.kind === 'counter') {
-            a = { ...a, target: lp!.refs[0].target, targetRef: lp!.refs[0].ref }
+        const play = lp as LegalPlay
+        if (play.targets && (pa.target == null || !play.targets.includes(pa.target))) fail('請選擇合法的目標')
+        if (play.refs && !play.refs.some((r) => r.ref === pa.targetRef && r.target === pa.target)) {
+          if (play.refs.length === 1 && play.kind === 'counter') {
+            pa = { ...pa, target: play.refs[0].target, targetRef: play.refs[0].ref }
           } else fail('請選擇要作用的對象')
         }
-        pushStack(s, p, a.card, lp!.kind, a.target, a.targetRef)
+        pushStack(s, p, pa.card, play.kind, pa.target, pa.targetRef)
         break
       }
       fail('無效的動作')
