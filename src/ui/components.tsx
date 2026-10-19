@@ -65,6 +65,7 @@ export function Seat({
   diverted,
   waiting,
   winner,
+  aiControlled,
   style,
 }: {
   p: PublicPlayer
@@ -75,6 +76,7 @@ export function Seat({
   diverted: boolean
   waiting: boolean
   winner: boolean
+  aiControlled?: boolean
   style?: React.CSSProperties
 }) {
   const ch = p.character ? CHAR_BY_ID[p.character] : null
@@ -96,6 +98,7 @@ export function Seat({
         <span className="seat-name">
           {p.name}
           {me && <span className="seat-you">你</span>}
+          {p.isAI && <span className="seat-ai">電腦</span>}
         </span>
         <span className="seat-hand" title="手牌數">
           手牌 {p.handCount}
@@ -116,6 +119,7 @@ export function Seat({
         {diverted && <span className="mark m-divert">調虎離山</span>}
         {holding && <span className="mark m-hold">情報在此</span>}
         {waiting && <span className="mark m-wait">思考中…</span>}
+        {aiControlled && p.status === 'alive' && <span className="mark m-ai">斷線．AI 代打</span>}
       </div>
     </div>
   )

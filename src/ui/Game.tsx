@@ -1,15 +1,51 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CHAR_BY_ID, COLOUR_NAME, FACTION_NAME, KIND_DESC, KIND_NAME, METHOD_NAME } from '../engine/data'
 import type { Action, Card, GameConfig, LegalPlay } from '../engine/types'
 import type { GameView } from '../engine/view'
 import { CardFace, FactionBadge, IntelChip, SEAL, Seat } from './components'
-import { useLocalGame } from './useLocalGame'
+import { useLocalController, useSecondsLeft, type GameController, type Social } from './controller'
+import { recordResult } from './history'
+import { ChatPanel, VoiceControls } from './social'
 
-export function Game({ config, onExit }: { config: GameConfig; onExit: () => void }) {
-  const g = useLocalGame(config, 0)
-  const v = g.view
+export function LocalGame({ config, onExit }: { config: GameConfig; onExit: () => void }) {
+  const ctl = useLocalController(config)
+  return (
+    <GameScreen
+      ctl={ctl}
+      onExit={onExit}
+      historyId={`local-${config.seed}`}
+      resultActions={
+        <button type="button" className="primary" onClick={onExit}>
+          回到大廳
+        </button>
+      }
+    />
+  )
+}
+
+export function GameScreen({
+  ctl,
+  social,
+  onExit,
+  exitLabel = '離開',
+  resultActions,
+  historyId,
+  topExtra,
+}: {
+  ctl: GameController
+  social?: Social
+  onExit: () => void
+  exitLabel?: string
+  resultActions: ReactNode
+  historyId: string
+  topExtra?: ReactNode
+}) {
+  const v = ctl.view
+  useEffect(() => {
+    if (v.result) recordResult(v, social ? 'online' : 'local', historyId)
+  }, [v, social, historyId])
   if (v.phase === 'choose_character' && v.decision?.type === 'choose_character') {
-    return <CharacterPick v={v} act={g.act} />
+    return <CharacterPick v={v} act={ctl.act} deadline={ctl.deadline} />
   }
   if (v.phase === 'choose_character') {
     return (
@@ -18,14 +54,18 @@ export function Game({ config, onExit }: { config: GameConfig; onExit: () => voi
       </main>
     )
   }
-  return <Table v={v} g={g} onExit={onExit} />
+  return <Table ctl={ctl} social={social} onExit={onExit} exitLabel={exitLabel} resultActions={resultActions} topExtra={topExtra} />
 }
 
-function CharacterPick({ v, act }: { v: GameView; act: (a: Action) => void }) {
+function CharacterPick({ v, act, deadline }: { v: GameView; act: (a: Action) => void; deadline: number | null }) {
+  const left = useSecondsLeft(deadline)
   return (
     <main className="pick">
       <h1>挑選你的角色</h1>
-      <p className="pick-sub">選完角色後才會發身份牌。潛伏角色開局蓋伏，其他角色公開。</p>
+      <p className="pick-sub">
+        選完角色後才會發身份牌。潛伏角色開局蓋伏，其他角色公開。
+        {left != null && <span className="countdown">剩 {left} 秒</span>}
+      </p>
       <div className="pick-row">
         {v.myCharOptions.map((id) => {
           const c = CHAR_BY_ID[id]
@@ -39,8 +79,8 @@ function CharacterPick({ v, act }: { v: GameView; act: (a: Action) => void }) {
               <span className="char-text">{c.missionText}</span>
               <span className="char-sec">角色技能（尚未實裝）</span>
               <ul>
-                {c.skills.map((s) => (
-                  <li key={s}>{s}</li>
+                {c.skills.map((sk) => (
+                  <li key={sk}>{sk}</li>
                 ))}
               </ul>
               <span className="char-go">選擇{c.name}</span>
@@ -52,8 +92,6 @@ function CharacterPick({ v, act }: { v: GameView; act: (a: Action) => void }) {
   )
 }
 
-type G = ReturnType<typeof useLocalGame>
-
 function seatPositions(n: number, me: number) {
   // 自己在正下方，其他人沿橢圓排列
   return Array.from({ length: n }, (_, seat) => {
@@ -63,28 +101,71 @@ function seatPositions(n: number, me: number) {
   })
 }
 
-function Table({ v, g, onExit }: { v: GameView; g: G; onExit: () => void }) {
+/** 「本回合都略過」：自動略過與自己無關的回應時機 */
+function useAutoSkip(v: GameView, act: (a: Action) => void) {
+  const [skipTurn, setSkipTurn] = useState<number | null>(null)
+  const d = v.decision
+  const skipping = skipTurn === v.turnNo
+  useEffect(() => {
+    if (!skipping || d?.type !== 'priority') return
+    const top = v.stack[v.stack.length - 1]
+    const aboutMe = (d.ctx === 'hopB' && v.trans?.holder === v.me) || (top && top.target === v.me)
+    if (aboutMe) return
+    const id = setTimeout(() => act({ type: 'pass' }), 150)
+    return () => clearTimeout(id)
+  }, [skipping, d, v, act])
+  return { skipping, skip: () => setSkipTurn(v.turnNo), stop: () => setSkipTurn(null) }
+}
+
+type Skip = ReturnType<typeof useAutoSkip>
+
+function Table({
+  ctl,
+  social,
+  onExit,
+  exitLabel,
+  resultActions,
+  topExtra,
+}: {
+  ctl: GameController
+  social?: Social
+  onExit: () => void
+  exitLabel: string
+  resultActions: ReactNode
+  topExtra?: ReactNode
+}) {
+  const v = ctl.view
   const [sel, setSel] = useState<number | null>(null)
+  const [tab, setTab] = useState<'log' | 'chat'>('log')
+  const [seenChat, setSeenChat] = useState(0)
   const pos = useMemo(() => seatPositions(v.players.length, v.me), [v.players.length, v.me])
   const me = v.players[v.me]
   const myChar = me.character ? CHAR_BY_ID[me.character] : null
   const d = v.decision
+  const skip = useAutoSkip(v, ctl.act)
 
   // 手牌變動或時機改變時，取消選取
   const decKey = `${d?.type}-${v.turnNo}-${v.stack.length}-${v.trans?.stage}-${v.trans?.holder}`
   useEffect(() => setSel(null), [decKey])
   const selCard = v.hand.find((c) => c.id === sel) ?? null
-
   const legalById = useMemo(() => new Map(v.legal.map((l) => [l.card, l])), [v.legal])
+
+  const chatLen = social?.chat.length ?? 0
+  useEffect(() => {
+    if (tab === 'chat') setSeenChat(chatLen)
+  }, [tab, chatLen])
+  const unread = Math.max(0, chatLen - seenChat)
 
   return (
     <div className="game">
       <header className="topbar">
         <span className="brand">風聲</span>
         <span className="turn">第 {v.turnNo} 回合．{v.players[v.active].name}</span>
+        {social && <VoiceControls voice={social.voice} speakers={social.room.voice.length} />}
+        {topExtra}
         <span className="deck">牌庫 {v.deckCount}．棄牌 {v.discardCount}</span>
         <button type="button" className="ghost" onClick={onExit}>
-          離開
+          {exitLabel}
         </button>
       </header>
 
@@ -100,8 +181,9 @@ function Table({ v, g, onExit }: { v: GameView; g: G; onExit: () => void }) {
                 holding={!!v.trans && v.trans.stage !== 'A' && v.trans.holder === p.seat}
                 locked={v.locks.includes(p.seat)}
                 diverted={v.diverts.includes(p.seat)}
-                waiting={g.waitingOn.includes(p.seat) && p.seat !== v.me}
+                waiting={ctl.waitingOn.includes(p.seat) && p.seat !== v.me}
                 winner={!!v.result?.winners.includes(p.seat)}
+                aiControlled={ctl.aiControlled.includes(p.seat)}
                 style={{ left: pos[i].left, top: pos[i].top }}
               />
             ))}
@@ -128,12 +210,22 @@ function Table({ v, g, onExit }: { v: GameView; g: G; onExit: () => void }) {
               </p>
             )}
           </div>
-          <Log v={v} />
+          {social && (
+            <div className="tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={tab === 'log'} className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>
+                遊戲紀錄
+              </button>
+              <button type="button" role="tab" aria-selected={tab === 'chat'} className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>
+                聊天{unread > 0 && <span className="badge">{unread}</span>}
+              </button>
+            </div>
+          )}
+          {social && tab === 'chat' ? <ChatPanel chat={social.chat} me={social.me} say={social.say} /> : <Log v={v} />}
         </aside>
       </div>
 
       <section className="bench" aria-label="你的手牌與行動">
-        <Prompt v={v} g={g} selCard={selCard} legal={selCard ? legalById.get(selCard.id) ?? null : null} clear={() => setSel(null)} />
+        <Prompt v={v} ctl={ctl} skip={skip} selCard={selCard} legal={selCard ? legalById.get(selCard.id) ?? null : null} clear={() => setSel(null)} />
         <div className="hand" role="group" aria-label="手牌">
           {v.hand.length === 0 && <span className="muted">沒有手牌</span>}
           {v.hand.map((c) => (
@@ -148,12 +240,12 @@ function Table({ v, g, onExit }: { v: GameView; g: G; onExit: () => void }) {
         </div>
       </section>
 
-      {g.error && (
-        <div className="toast" role="alert" onClick={g.clearError}>
-          {g.error}
+      {ctl.error && (
+        <div className="toast" role="alert" onClick={ctl.clearError}>
+          {ctl.error}
         </div>
       )}
-      {v.result && <Result v={v} onExit={onExit} />}
+      {v.result && <Result v={v} actions={resultActions} />}
     </div>
   )
 }
@@ -238,20 +330,23 @@ function describe(v: GameView): string {
 
 function Prompt({
   v,
-  g,
+  ctl,
+  skip,
   selCard,
   legal,
   clear,
 }: {
   v: GameView
-  g: G
+  ctl: GameController
+  skip: Skip
   selCard: Card | null
   legal: LegalPlay | null
   clear: () => void
 }) {
   const d = v.decision
+  const left = useSecondsLeft(d ? ctl.deadline : null)
   const act = (a: Action) => {
-    g.act(a)
+    ctl.act(a)
     clear()
   }
   const name = (p: number) => v.players[p].name
@@ -260,7 +355,10 @@ function Prompt({
 
   return (
     <div className={`prompt ${mine ? 'is-mine' : ''}`}>
-      <p className="prompt-text">{describe(v)}</p>
+      <p className="prompt-text">
+        {describe(v)}
+        {left != null && <span className={`countdown ${left <= 5 ? 'is-urgent' : ''}`}>剩 {left} 秒</span>}
+      </p>
 
       {d?.type === 'chaos_pick' && (
         <div className="choices">
@@ -324,12 +422,12 @@ function Prompt({
           <button type="button" onClick={() => act({ type: 'pass' })}>
             不使用
           </button>
-          {g.skipping ? (
-            <button type="button" className="ghost" onClick={g.stopSkipping}>
+          {skip.skipping ? (
+            <button type="button" className="ghost" onClick={skip.stop}>
               恢復詢問
             </button>
           ) : (
-            <button type="button" className="ghost" onClick={g.skipThisTurn} title="這個回合中與你無關的時機自動略過">
+            <button type="button" className="ghost" onClick={skip.skip} title="這個回合中與你無關的時機自動略過">
               本回合都略過
             </button>
           )}
@@ -411,7 +509,7 @@ function Log({ v }: { v: GameView }) {
   )
 }
 
-function Result({ v, onExit }: { v: GameView; onExit: () => void }) {
+function Result({ v, actions }: { v: GameView; actions: ReactNode }) {
   const r = v.result!
   const won = r.winners.includes(v.me)
   return (
@@ -431,9 +529,7 @@ function Result({ v, onExit }: { v: GameView; onExit: () => void }) {
             ))}
           </tbody>
         </table>
-        <button type="button" className="primary" onClick={onExit}>
-          回到大廳
-        </button>
+        <div className="result-actions">{actions}</div>
       </div>
     </div>
   )
