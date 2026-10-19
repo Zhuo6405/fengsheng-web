@@ -1,32 +1,32 @@
-# React + TypeScript + Vite
+# 風聲（網頁版）
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+《風聲》108 張版本的網頁實作，和朋友連線或對戰 AI。
 
-Currently, two official plugins are available:
+線上遊玩：https://zhuo6405.github.io/fengsheng-web/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 目前進度
 
-## React Compiler
+- [x] 規則引擎：108 張牌、三種傳遞方式、九種功能牌、鎖定／調虎離山／截獲／退回／破譯的時機窗口、後發先至的回應堆疊、死亡與勝負判定
+- [x] 角色挑選與機密任務（打醬油的勝利條件）、醬油同盟
+- [x] 單機對戰 AI（3–9 人）
+- [ ] 多人連線（P2P，房主瀏覽器當伺服器）、文字聊天、語音
+- [ ] 角色技能
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 開發
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # 本地開發
+npm test         # 規則測試 + AI 自動對戰
+npm run sim 500  # 讓 AI 打 500 局看統計
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+推送到 `main` 後，GitHub Actions 會自動部署到 GitHub Pages（Settings → Pages → Source 選 GitHub Actions）。
+
+## 程式結構
+
+- `src/engine/` 規則引擎（純函式、可重現的亂數）。`viewFor()` 只產生某位玩家看得到的資訊，連線時房主只送這份資料。
+- `src/ai/` AI，只讀取自己的視角，不偷看。
+- `src/ui/` React 介面。
+
+規則依據：[【風聲】規則及卡牌詳解](https://m102.nthu.edu.tw/~s102061202/Message_Rules_CN.pdf)。卡面為原創設計，不含原作美術。
