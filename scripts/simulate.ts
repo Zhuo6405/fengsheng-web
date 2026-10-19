@@ -1,6 +1,6 @@
 // 用法：npm run sim -- [局數]
 import { FACTION_SETUPS } from '../src/engine/data'
-import { makeConfig, playOut } from '../src/engine/sim'
+import { makeConfig, playOut, skillStats } from '../src/engine/sim'
 
 const N = Number(process.argv[2] ?? 200)
 const t0 = Date.now()
@@ -20,3 +20,4 @@ for (let g = 0; g < N; g++) {
 const ms = Date.now() - t0
 console.log(`${N} 局，${ms} ms（每局 ${(ms / N).toFixed(1)} ms），平均 ${(turns / N).toFixed(1)} 回合、${(actions / N).toFixed(0)} 個動作`)
 console.log('宣告勝利者陣營：', wins)
+console.log('技能觸發次數：', Object.entries(skillStats).sort((a, b) => b[1] - a[1]))

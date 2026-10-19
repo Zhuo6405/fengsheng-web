@@ -353,7 +353,7 @@ button.ghost {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 600px;
+  min-height: 540px;
 }
 
 .seat {
@@ -825,8 +825,16 @@ button.card:hover {
 }
 
 .prompt {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.prompt > .prompt-text,
+.prompt > .selected,
+.prompt > p {
+  flex-basis: 100%;
 }
 
 .prompt-text {
@@ -1695,4 +1703,54 @@ button.card:hover {
   .seat {
     width: auto;
   }
+}
+
+/* ───────── 角色技能 ───────── */
+
+.skills {
+  padding: 0;
+}
+
+.skill-btn {
+  border-color: #8f6b2e !important;
+  background: rgba(200, 162, 74, 0.14) !important;
+  color: #f0dca6;
+  font-family: var(--serif);
+  font-weight: 700;
+}
+
+.skill-btn:hover {
+  border-color: var(--brass) !important;
+}
+
+.me-skills {
+  margin-top: 8px;
+  font-size: 15px;
+}
+
+.me-skills summary {
+  cursor: pointer;
+  color: var(--brass);
+}
+
+.me-skills ul {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+  color: var(--text-soft);
+}
+
+.intel-pick {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.intel-pick.on {
+  border-color: var(--brass) !important;
+  background: #4a3a24 !important;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

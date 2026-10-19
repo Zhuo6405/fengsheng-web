@@ -15,8 +15,7 @@ export const ONLINE_TIMEOUTS: RunnerOpts['timeouts'] = {
   play: 90_000,
   priority: 20_000,
   accept: 30_000,
-  discard: 30_000,
-  chaos_pick: 20_000,
+  ask: 30_000,
 }
 
 /**

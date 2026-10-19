@@ -235,7 +235,7 @@ export function Lobby({
         </section>
       )}
 
-      <footer className="lobby-foot">目前版本：108 張基本規則。角色的機密任務已生效，角色技能尚未實裝。</footer>
+      <footer className="lobby-foot">目前版本：108 張規則與 18 個角色的技能、機密任務都已實裝。</footer>
     </main>
   )
 }

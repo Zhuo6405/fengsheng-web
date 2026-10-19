@@ -1,5 +1,5 @@
-import { currentCtx, getDecisions, legalPlays, peekNext } from './engine'
-import type { Card, Decision, Faction, GameResult, GameState, LegalPlay, LogEntry, Method, PlayerStatus } from './types'
+import { currentCtx, getDecisions, legalPlays, legalSkills, peekNext } from './engine'
+import type { Card, Decision, Faction, GameResult, GameState, LegalPlay, LegalSkill, LogEntry, Method, PlayerStatus } from './types'
 
 // 每位玩家只能看到的資訊。多人連線時，房主只把這份資料送給對應的玩家，
 // 所以別人的手牌、身份、蓋伏的角色都不會出現在他的瀏覽器裡。
@@ -14,8 +14,9 @@ export interface PublicPlayer {
   /** 公開或自己的角色；別人蓋伏的角色為 null */
   character: string | null
   charFaceUp: boolean
-  /** 自己的身份，或遊戲結束後公開 */
+  /** 自己的身份、已公開的身份，或遊戲結束後公開 */
   faction: Faction | null
+  identityRevealed: boolean
 }
 
 export interface TransView {
@@ -34,7 +35,9 @@ export interface TransView {
 export interface StackView {
   uid: number
   kind: Card['kind']
+  printed: Card['kind']
   colour: Card['colour']
+  uncounterable: boolean
   user: number
   target?: number
   targetRef?: number
@@ -58,9 +61,9 @@ export interface GameView {
   window: GameState['window']
   decision: Decision | null
   legal: LegalPlay[]
+  skills: LegalSkill[]
   log: LogEntry[]
   result: GameResult | null
-  chaosSlots: number
   deaths: number[]
   factions: [number, number, number]
   neutralAlliance: boolean
@@ -93,7 +96,8 @@ export function viewFor(s: GameState, me: number): GameView {
         intel: pl.intel.map((id) => s.cards[id]).map(strip),
         character: mine || pl.charFaceUp || over ? pl.character : null,
         charFaceUp: pl.charFaceUp,
-        faction: mine || over ? pl.faction : null,
+        faction: mine || over || pl.identityRevealed ? pl.faction : null,
+        identityRevealed: pl.identityRevealed,
       }
     }),
     hand: s.players[me].hand.map((id) => s.cards[id]),
@@ -118,7 +122,9 @@ export function viewFor(s: GameState, me: number): GameView {
     stack: s.stack.map((it) => ({
       uid: it.uid,
       kind: it.kind,
+      printed: it.printed,
       colour: s.cards[it.card].colour,
+      uncounterable: it.uncounterable,
       user: it.user,
       target: it.target,
       targetRef: it.targetRef,
@@ -127,9 +133,9 @@ export function viewFor(s: GameState, me: number): GameView {
     window: s.window,
     decision: dec,
     legal: dec && (dec.type === 'priority' || dec.type === 'play') ? legalPlays(s, me, ctx) : [],
+    skills: dec && (dec.type === 'priority' || dec.type === 'play') ? legalSkills(s, me, ctx) : [],
     log: s.log.filter((l) => l.vis === null || l.vis.includes(me)),
     result: s.result,
-    chaosSlots: s.sub?.type === 'chaos' ? s.sub.cards.length : 0,
     deaths: [...s.deaths],
     factions: s.config.factions,
     neutralAlliance: s.config.neutralAlliance,

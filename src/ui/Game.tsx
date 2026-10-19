@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CHAR_BY_ID, COLOUR_NAME, FACTION_NAME, KIND_DESC, KIND_NAME, METHOD_NAME } from '../engine/data'
-import type { Action, Card, GameConfig, LegalPlay } from '../engine/types'
+import type { Action, AskView, Card, GameConfig, LegalPlay } from '../engine/types'
 import type { GameView } from '../engine/view'
 import { CardFace, FactionBadge, IntelChip, SEAL, Seat } from './components'
 import { useLocalController, useSecondsLeft, type GameController, type Social } from './controller'
@@ -78,7 +78,7 @@ function CharacterPick({ v, act, deadline }: { v: GameView; act: (a: Action) => 
               </span>
               <span className="char-sec">機密任務</span>
               <span className="char-text">{c.missionText}</span>
-              <span className="char-sec">角色技能（尚未實裝）</span>
+              <span className="char-sec">角色技能</span>
               <ul>
                 {c.skills.map((sk) => (
                   <li key={sk}>{sk}</li>
@@ -159,10 +159,29 @@ function Table({
   }, [myMove, myAny, v.result])
 
   // 手牌變動或時機改變時，取消選取
-  const decKey = `${d?.type}-${v.turnNo}-${v.stack.length}-${v.trans?.stage}-${v.trans?.holder}`
-  useEffect(() => setSel(null), [decKey])
+  const askNow = d?.type === 'ask' ? d.ask : null
+  const decKey = `${d?.type}-${v.turnNo}-${v.stack.length}-${v.trans?.stage}-${v.trans?.holder}-${askNow?.prompt ?? ''}`
+  const [picked, setPicked] = useState<number[]>([])
+  useEffect(() => {
+    setSel(null)
+    setPicked([])
+  }, [decKey])
   const selCard = v.hand.find((c) => c.id === sel) ?? null
-  const legalById = useMemo(() => new Map(v.legal.map((l) => [l.card, l])), [v.legal])
+  const legalById = useMemo(() => {
+    const m = new Map<number, LegalPlay[]>()
+    for (const l of v.legal) m.set(l.card, [...(m.get(l.card) ?? []), l])
+    return m
+  }, [v.legal])
+  // 技能要從手牌選牌時，手牌改成多選
+  const handAsk = askNow && askNow.choice.kind === 'cards' && askNow.choice.zone === 'hand' ? askNow.choice : null
+  const clickCard = (id: number) => {
+    if (handAsk) {
+      if (!handAsk.ids.includes(id)) return
+      setPicked((ps) => (ps.includes(id) ? ps.filter((x) => x !== id) : handAsk.max === 1 ? [id] : ps.length < handAsk.max ? [...ps, id] : ps))
+      return
+    }
+    setSel(sel === id ? null : id)
+  }
 
   const chatLen = social?.chat.length ?? 0
   useEffect(() => {
@@ -227,6 +246,16 @@ function Table({
                 你的勝利條件：你或隊友集滿三張{me.faction === 'red' ? '紅色' : '藍色'}情報。
               </p>
             )}
+            {myChar && (
+              <details className="me-skills">
+                <summary>角色技能{!me.charFaceUp && myChar.hidden ? '（蓋伏中只能用「翻開」的技能）' : !me.charFaceUp ? '（被蓋伏，技能失效）' : ''}</summary>
+                <ul>
+                  {myChar.skills.map((sk) => (
+                    <li key={sk}>{sk}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
           {social && (
             <div className="tabs" role="tablist">
@@ -243,16 +272,28 @@ function Table({
       </div>
 
       <section className={`bench ${myMove ? 'is-my-move' : myAny ? 'is-my-chance' : ''}`} aria-label="你的手牌與行動">
-        <Prompt v={v} ctl={ctl} skip={skip} selCard={selCard} legal={selCard ? legalById.get(selCard.id) ?? null : null} clear={() => setSel(null)} />
+        <Prompt
+          v={v}
+          ctl={ctl}
+          skip={skip}
+          selCard={selCard}
+          legal={selCard ? legalById.get(selCard.id) ?? [] : []}
+          picked={picked}
+          setPicked={setPicked}
+          clear={() => {
+            setSel(null)
+            setPicked([])
+          }}
+        />
         <div className="hand" role="group" aria-label="手牌">
           {v.hand.length === 0 && <span className="muted">沒有手牌</span>}
           {v.hand.map((c) => (
             <CardFace
               key={c.id}
               card={c}
-              selected={sel === c.id}
-              usable={legalById.has(c.id) || d?.type === 'play' || d?.type === 'discard'}
-              onClick={() => setSel(sel === c.id ? null : c.id)}
+              selected={sel === c.id || picked.includes(c.id)}
+              usable={handAsk ? handAsk.ids.includes(c.id) : legalById.has(c.id) || d?.type === 'play'}
+              onClick={() => clickCard(c.id)}
             />
           ))}
         </div>
@@ -304,7 +345,9 @@ function Centre({ v }: { v: GameView }) {
         <ol className="stack" aria-label="結算中的卡牌（後發先至）">
           {v.stack.map((s) => (
             <li key={s.uid} className={s.countered ? 'is-countered' : ''}>
-              <b>{name(s.user)}</b>【{KIND_NAME[s.kind]}】
+              <b>{name(s.user)}</b>
+              {s.printed !== s.kind ? `【${KIND_NAME[s.printed]}】當作` : ''}【{KIND_NAME[s.kind]}】
+              {s.uncounterable && <span className="muted">（不能識破）</span>}
               {s.target != null && s.kind !== 'counter' && <> → {name(s.target)}</>}
             </li>
           ))}
@@ -324,7 +367,8 @@ function describeOthers(v: GameView, waitingOn: number[]): string {
   if (t && t.stage === 'decide' && who[0] === t.holder) return `等待 ${name} 決定是否接收情報…`
   if (v.stack.length) return `等待 ${name} 決定要不要回應…`
   if (!t && who[0] === v.active) return `等待 ${name} 出牌…`
-  return `等待 ${name} 決定要不要用牌…`
+  if (t || v.stack.length) return `等待 ${name} 決定要不要用牌…`
+  return `等待 ${name} 行動…`
 }
 
 function describe(v: GameView): string {
@@ -337,10 +381,8 @@ function describe(v: GameView): string {
       return '你的出牌階段：可以先使用功能牌，最後必須傳出一張情報。點選一張手牌。'
     case 'accept':
       return t?.card ? `要接收這份情報（${t.card.colour === 'black' ? '假情報' : `${COLOUR_NAME[t.card.colour]}色情報`}）嗎？` : '情報傳到你面前，要接收嗎？你不知道內容。'
-    case 'discard':
-      return '你被試探猜中了，要棄一張牌。點選一張手牌棄掉（暗棄）。'
-    case 'chaos_pick':
-      return '真偽莫辨：選一張蓋著的牌作為你的情報。'
+    case 'ask':
+      return d.ask.prompt
     case 'choose_character':
       return '挑選角色'
     case 'priority': {
@@ -362,13 +404,17 @@ function Prompt({
   skip,
   selCard,
   legal,
+  picked,
+  setPicked,
   clear,
 }: {
   v: GameView
   ctl: GameController
   skip: Skip
   selCard: Card | null
-  legal: LegalPlay | null
+  legal: LegalPlay[]
+  picked: number[]
+  setPicked: (p: number[]) => void
   clear: () => void
 }) {
   const d = v.decision
@@ -384,20 +430,12 @@ function Prompt({
   return (
     <div className={`prompt ${mine ? 'is-mine' : ''}`}>
       <p className="prompt-text">
-        {mine && <span className="your-turn">{d!.type === 'priority' ? '你可以回應' : '輪到你了'}</span>}
+        {mine && <span className="your-turn">{d!.type === 'priority' ? '你可以回應' : d!.type === 'ask' ? d!.ask.title : '輪到你了'}</span>}
         {mine ? describe(v) : describeOthers(v, ctl.waitingOn)}
         {left != null && <span className={`countdown ${left <= 5 ? 'is-urgent' : ''}`}>剩 {left} 秒</span>}
       </p>
 
-      {d?.type === 'chaos_pick' && (
-        <div className="choices">
-          {d.slots.map((s) => (
-            <button key={s} type="button" className="facedown" onClick={() => act({ type: 'chaos_pick', slot: s })}>
-              第 {s + 1} 張
-            </button>
-          ))}
-        </div>
-      )}
+      {d?.type === 'ask' && <AskPanel v={v} ask={d.ask} picked={picked} setPicked={setPicked} act={act} />}
 
       {d?.type === 'accept' && (
         <div className="choices">
@@ -410,14 +448,6 @@ function Prompt({
         </div>
       )}
 
-      {d?.type === 'discard' && selCard && (
-        <div className="choices">
-          <button type="button" className="primary" onClick={() => act({ type: 'discard', card: selCard.id })}>
-            棄掉【{KIND_NAME[selCard.kind]}】
-          </button>
-        </div>
-      )}
-
       {(d?.type === 'play' || d?.type === 'priority') && selCard && (
         <div className="selected">
           <p className="sel-desc">
@@ -425,8 +455,10 @@ function Prompt({
             {KIND_DESC[selCard.kind]}
           </p>
           <div className="choices">
-            {legal && <PlayOptions legal={legal} v={v} onPlay={act} />}
-            {!legal && d.type === 'priority' && <span className="muted">這張牌現在不能使用。</span>}
+            {legal.map((l) => (
+              <PlayOptions key={`${l.kind}-${l.as ? 1 : 0}`} legal={l} v={v} onPlay={act} />
+            ))}
+            {!legal.length && d.type === 'priority' && <span className="muted">這張牌現在不能使用。</span>}
             {d.type === 'play' &&
               (selCard.method === 'direct' ? (
                 <span className="choice-group">
@@ -437,12 +469,32 @@ function Prompt({
                     </button>
                   ))}
                 </span>
+              ) : canSteer(v) ? (
+                <span className="choice-group">
+                  <span className="choice-label">以{METHOD_NAME[selCard.method]}傳出（貝雷帽可選方向）</span>
+                  <button type="button" className="primary" onClick={() => act({ type: 'send', card: selCard.id, dir: 1 })}>
+                    傳給 {name(nextSeat(v, 1))}
+                  </button>
+                  <button type="button" className="primary" onClick={() => act({ type: 'send', card: selCard.id, dir: -1 })}>
+                    傳給 {name(nextSeat(v, -1))}
+                  </button>
+                </span>
               ) : (
                 <button type="button" className="primary" onClick={() => act({ type: 'send', card: selCard.id })}>
                   以{METHOD_NAME[selCard.method]}傳出這張情報
                 </button>
               ))}
           </div>
+        </div>
+      )}
+
+      {(d?.type === 'play' || d?.type === 'priority') && v.skills.length > 0 && (
+        <div className="choices skills">
+          {v.skills.map((sk) => (
+            <button key={sk.id} type="button" className="skill-btn" onClick={() => act({ type: 'use_skill', skill: sk.id })}>
+              {sk.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -472,7 +524,8 @@ function Prompt({
 
 function PlayOptions({ legal, v, onPlay }: { legal: LegalPlay; v: GameView; onPlay: (a: Action) => void }) {
   const name = (p: number) => v.players[p].name
-  const label = `使用【${KIND_NAME[legal.kind]}】`
+  const card = v.hand.find((c) => c.id === legal.card)
+  const label = legal.as && card ? `把【${KIND_NAME[card.kind]}】當作【${KIND_NAME[legal.kind]}】` : `使用【${KIND_NAME[legal.kind]}】`
   if (legal.kind === 'counter' && legal.refs) {
     const r = legal.refs[0]
     return (
@@ -501,7 +554,7 @@ function PlayOptions({ legal, v, onPlay }: { legal: LegalPlay; v: GameView; onPl
       <span className="choice-group">
         <span className="choice-label">{label}，目標</span>
         {legal.targets.map((t) => (
-          <button key={t} type="button" className="primary" onClick={() => onPlay({ type: 'play_card', card: legal.card, target: t })}>
+          <button key={t} type="button" className="primary" onClick={() => onPlay({ type: 'play_card', card: legal.card, target: t, as: legal.as ? legal.kind : undefined })}>
             {t === v.me ? '自己' : name(t)}
           </button>
         ))}
@@ -560,6 +613,108 @@ function Result({ v, actions }: { v: GameView; actions: ReactNode }) {
         </table>
         <div className="result-actions">{actions}</div>
       </div>
+    </div>
+  )
+}
+
+function canSteer(v: GameView) {
+  const me = v.players[v.me]
+  return me.character === 'beileimao' && me.charFaceUp
+}
+
+function nextSeat(v: GameView, dir: 1 | -1) {
+  const n = v.players.length
+  for (let k = 1; k <= n; k++) {
+    const q = (((v.me + dir * k) % n) + n) % n
+    if (v.players[q].status === 'alive') return q
+  }
+  return v.me
+}
+
+/** 技能與其他需要回答的問題 */
+function AskPanel({
+  v,
+  ask,
+  picked,
+  setPicked,
+  act,
+}: {
+  v: GameView
+  ask: AskView
+  picked: number[]
+  setPicked: (p: number[]) => void
+  act: (a: Action) => void
+}) {
+  const c = ask.choice
+  const name = (p: number) => (p === v.me ? '自己' : v.players[p].name)
+  const skipBtn = ask.canSkip && (
+    <button type="button" onClick={() => act({ type: 'skip' })}>
+      {c.kind === 'confirm' ? '不要' : '略過'}
+    </button>
+  )
+  if (c.kind === 'confirm')
+    return (
+      <div className="choices">
+        <button type="button" className="primary" onClick={() => act({ type: 'answer', value: true })}>
+          發動
+        </button>
+        {skipBtn}
+      </div>
+    )
+  if (c.kind === 'options')
+    return (
+      <div className="choices">
+        {c.options.map((o) => (
+          <button key={o.id} type="button" className="primary" onClick={() => act({ type: 'answer', value: o.id })}>
+            {o.label}
+          </button>
+        ))}
+        {skipBtn}
+      </div>
+    )
+  if (c.kind === 'player')
+    return (
+      <div className="choices">
+        {c.seats.map((q) => (
+          <button key={q} type="button" className="primary" onClick={() => act({ type: 'answer', value: q })}>
+            {name(q)}
+          </button>
+        ))}
+        {skipBtn}
+      </div>
+    )
+  if (c.zone === 'slots')
+    return (
+      <div className="choices">
+        {c.ids.map((i) => (
+          <button key={i} type="button" className="facedown" onClick={() => act({ type: 'answer', value: [i] })}>
+            第 {i + 1} 張
+          </button>
+        ))}
+      </div>
+    )
+  const toggle = (id: number) =>
+    setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : c.max === 1 ? [id] : picked.length < c.max ? [...picked, id] : picked)
+  const ok = picked.length >= c.min && picked.length <= c.max
+  const need = c.min === c.max ? `${c.min} 張` : `${c.min}–${c.max} 張`
+  return (
+    <div className="choices">
+      {c.zone === 'intel' && c.owner != null && (
+        <span className="choice-group">
+          {v.players[c.owner].intel
+            .filter((x) => c.ids.includes(x.id))
+            .map((x) => (
+              <button key={x.id} type="button" className={`intel-pick ${picked.includes(x.id) ? 'on' : ''}`} aria-pressed={picked.includes(x.id)} onClick={() => toggle(x.id)}>
+                <IntelChip card={x} /> {KIND_NAME[x.kind]}
+              </button>
+            ))}
+        </span>
+      )}
+      {c.zone === 'hand' && <span className="choice-label">點選下方手牌（{need}）</span>}
+      <button type="button" className="primary" disabled={!ok} onClick={() => act({ type: 'answer', value: picked })}>
+        確定（已選 {picked.length} 張）
+      </button>
+      {skipBtn}
     </div>
   )
 }
