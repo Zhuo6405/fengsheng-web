@@ -188,7 +188,7 @@ export function Lobby({
               <button key={i} type="button" className={`setup ${s === setup ? 'on' : ''}`} aria-pressed={s === setup} onClick={() => setSetupIdx(i)}>
                 <b className="f-red">潛伏 {s[0]}</b>
                 <b className="f-blue">軍情 {s[1]}</b>
-                <b className="f-neutral">醬油 {s[2]}</b>
+                <b className="f-neutral">特工 {s[2]}</b>
               </button>
             ))}
           </div>
@@ -197,8 +197,8 @@ export function Lobby({
         <label className={`check ${setup[2] < 2 ? 'is-disabled' : ''}`}>
           <input type="checkbox" checked={alliance && setup[2] >= 2} disabled={setup[2] < 2} onChange={(e) => setAlliance(e.target.checked)} />
           <span>
-            醬油同盟
-            <small>一位打醬油的玩家宣告勝利時，所有打醬油的玩家一同勝利。需要至少兩位打醬油的玩家。</small>
+            特工同盟
+            <small>一位特工宣告勝利時，所有特工一同勝利。需要至少兩位特工。</small>
           </span>
         </label>
 

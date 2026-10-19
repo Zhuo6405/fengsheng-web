@@ -15,7 +15,7 @@ export type CardKind =
   | 'probe' // 試探
   | 'chaos' // 真偽莫辨
 
-/** 潛伏戰線 / 軍情局 / 打醬油的 */
+/** 潛伏戰線 / 軍情局 / 特工 */
 export type Faction = 'red' | 'blue' | 'neutral'
 
 export interface ProbeSpec {
@@ -83,7 +83,7 @@ export interface PlayerSeed {
 
 export interface GameConfig {
   players: PlayerSeed[]
-  /** [潛伏戰線, 軍情局, 打醬油的] */
+  /** [潛伏戰線, 軍情局, 特工] */
   factions: [number, number, number]
   neutralAlliance: boolean
   seed: number

@@ -43,7 +43,7 @@ function wantCard(v: GameView, c: Card): number {
   if (c.colour === 'black') return bl >= 2 ? -10 : bl === 1 ? -3 : -1.5
   const mc = myColour(v)
   if (mc) return c.colour === mc ? 3 + colourOf(me.intel, mc) : -0.8
-  // 打醬油：看機密任務
+  // 特工：看機密任務
   const m = me.character ? CHAR_BY_ID[me.character].mission : null
   if (m?.type === 'intel') return c.colour === m.colour ? 3 : 0.2
   if (m?.type === 'nonBlack' || m?.type === 'totalIntel') return 2

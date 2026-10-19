@@ -93,7 +93,7 @@ export function Seat({
     .join(' ')
   const charLabel = ch ? `${ch.name}${p.charFaceUp ? '' : '（蓋伏）'}` : '角色蓋伏'
   return (
-    <div className={cls} style={style}>
+    <div className={cls} style={style} data-seat={p.seat}>
       <div className="seat-head">
         <span className="seat-name">
           {p.name}
@@ -118,7 +118,7 @@ export function Seat({
         {locked && <span className="mark m-lock">鎖定</span>}
         {diverted && <span className="mark m-divert">調虎離山</span>}
         {holding && <span className="mark m-hold">情報在此</span>}
-        {waiting && <span className="mark m-wait">思考中…</span>}
+        {waiting && <span className="mark m-wait">行動中</span>}
         {aiControlled && p.status === 'alive' && <span className="mark m-ai">斷線．AI 代打</span>}
       </div>
     </div>

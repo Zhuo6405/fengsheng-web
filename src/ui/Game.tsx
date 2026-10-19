@@ -4,6 +4,7 @@ import type { Action, Card, GameConfig, LegalPlay } from '../engine/types'
 import type { GameView } from '../engine/view'
 import { CardFace, FactionBadge, IntelChip, SEAL, Seat } from './components'
 import { useLocalController, useSecondsLeft, type GameController, type Social } from './controller'
+import { Dossier, useDossier } from './Dossier'
 import { recordResult } from './history'
 import { ChatPanel, VoiceControls } from './social'
 
@@ -143,6 +144,19 @@ function Table({
   const myChar = me.character ? CHAR_BY_ID[me.character] : null
   const d = v.decision
   const skip = useAutoSkip(v, ctl.act)
+  const ringRef = useRef<HTMLDivElement>(null)
+  const dossier = useDossier(v)
+  const myMove = !!d && d.type !== 'priority'
+  const myAny = !!d
+
+  // 分頁標題提示：輪到你時，切到別的分頁也看得到
+  useEffect(() => {
+    const base = '風聲'
+    document.title = v.result ? base : myMove ? '● 輪到你了｜風聲' : myAny ? '● 可以回應｜風聲' : base
+    return () => {
+      document.title = base
+    }
+  }, [myMove, myAny, v.result])
 
   // 手牌變動或時機改變時，取消選取
   const decKey = `${d?.type}-${v.turnNo}-${v.stack.length}-${v.trans?.stage}-${v.trans?.holder}`
@@ -160,7 +174,10 @@ function Table({
     <div className="game">
       <header className="topbar">
         <span className="brand">風聲</span>
-        <span className="turn">第 {v.turnNo} 回合．{v.players[v.active].name}</span>
+        <span className="turn">
+          第 {v.turnNo} 回合
+          <b className={v.active === v.me ? 'turn-me' : ''}>{v.active === v.me ? '你的回合' : `${v.players[v.active].name} 的回合`}</b>
+        </span>
         {social && <VoiceControls voice={social.voice} speakers={social.room.voice.length} />}
         {topExtra}
         <span className="deck">牌庫 {v.deckCount}．棄牌 {v.discardCount}</span>
@@ -171,7 +188,7 @@ function Table({
 
       <div className="layout">
         <section className="desk" aria-label="牌桌">
-          <div className="ring">
+          <div className="ring" ref={ringRef}>
             {v.players.map((p, i) => (
               <Seat
                 key={p.seat}
@@ -181,13 +198,14 @@ function Table({
                 holding={!!v.trans && v.trans.stage !== 'A' && v.trans.holder === p.seat}
                 locked={v.locks.includes(p.seat)}
                 diverted={v.diverts.includes(p.seat)}
-                waiting={ctl.waitingOn.includes(p.seat) && p.seat !== v.me}
+                waiting={ctl.waitingOn.includes(p.seat)}
                 winner={!!v.result?.winners.includes(p.seat)}
                 aiControlled={ctl.aiControlled.includes(p.seat)}
                 style={{ left: pos[i].left, top: pos[i].top }}
               />
             ))}
             <Centre v={v} />
+            {dossier && <Dossier key={dossier.key} shown={dossier} ringRef={ringRef} />}
           </div>
         </section>
 
@@ -200,7 +218,7 @@ function Table({
             </div>
             {myChar && (
               <p className="me-mission">
-                {me.faction === 'neutral' ? '你的勝利條件：' : '機密任務（打醬油時才生效）：'}
+                {me.faction === 'neutral' ? '你的勝利條件：' : '機密任務（身份是特工時才生效）：'}
                 {myChar.missionText}
               </p>
             )}
@@ -224,7 +242,7 @@ function Table({
         </aside>
       </div>
 
-      <section className="bench" aria-label="你的手牌與行動">
+      <section className={`bench ${myMove ? 'is-my-move' : myAny ? 'is-my-chance' : ''}`} aria-label="你的手牌與行動">
         <Prompt v={v} ctl={ctl} skip={skip} selCard={selCard} legal={selCard ? legalById.get(selCard.id) ?? null : null} clear={() => setSel(null)} />
         <div className="hand" role="group" aria-label="手牌">
           {v.hand.length === 0 && <span className="muted">沒有手牌</span>}
@@ -296,14 +314,24 @@ function Centre({ v }: { v: GameView }) {
   )
 }
 
+function describeOthers(v: GameView, waitingOn: number[]): string {
+  if (v.result) return '遊戲結束'
+  const who = waitingOn.filter((p) => p !== v.me)
+  if (who.length === 0) return '結算中…'
+  const name = v.players[who[0]].name
+  const t = v.trans
+  if (v.phase === 'choose_character') return '等待其他玩家挑選角色…'
+  if (t && t.stage === 'decide' && who[0] === t.holder) return `等待 ${name} 決定是否接收情報…`
+  if (v.stack.length) return `等待 ${name} 決定要不要回應…`
+  if (!t && who[0] === v.active) return `等待 ${name} 出牌…`
+  return `等待 ${name} 決定要不要用牌…`
+}
+
 function describe(v: GameView): string {
   const d = v.decision
   const name = (p: number) => v.players[p].name
   const t = v.trans
-  if (!d) {
-    if (v.result) return '遊戲結束'
-    return '等待其他玩家…'
-  }
+  if (!d) return ''
   switch (d.type) {
     case 'play':
       return '你的出牌階段：可以先使用功能牌，最後必須傳出一張情報。點選一張手牌。'
@@ -356,7 +384,8 @@ function Prompt({
   return (
     <div className={`prompt ${mine ? 'is-mine' : ''}`}>
       <p className="prompt-text">
-        {describe(v)}
+        {mine && <span className="your-turn">{d!.type === 'priority' ? '你可以回應' : '輪到你了'}</span>}
+        {mine ? describe(v) : describeOthers(v, ctl.waitingOn)}
         {left != null && <span className={`countdown ${left <= 5 ? 'is-urgent' : ''}`}>剩 {left} 秒</span>}
       </p>
 

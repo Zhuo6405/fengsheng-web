@@ -39,7 +39,7 @@ export const COLOUR_NAME: Record<Colour, string> = {
 export const FACTION_NAME: Record<Faction, string> = {
   red: '潛伏戰線',
   blue: '軍情局',
-  neutral: '打醬油的',
+  neutral: '特工',
 }
 
 // [種類, 傳遞方式, 紅, 藍, 黑]
@@ -83,7 +83,7 @@ export function buildCards(): Card[] {
   return cards
 }
 
-/** 各人數可用的陣營配置 [潛伏, 軍情, 醬油] */
+/** 各人數可用的陣營配置 [潛伏, 軍情, 特工] */
 export const FACTION_SETUPS: Record<number, [number, number, number][]> = {
   3: [[1, 1, 1]],
   4: [

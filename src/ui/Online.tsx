@@ -281,7 +281,7 @@ function RoomView({
                     <button key={i} type="button" className={`setup ${x === setup ? 'on' : ''}`} aria-pressed={x === setup} onClick={() => onSettings({ setupIdx: i })}>
                       <b className="f-red">潛伏 {x[0]}</b>
                       <b className="f-blue">軍情 {x[1]}</b>
-                      <b className="f-neutral">醬油 {x[2]}</b>
+                      <b className="f-neutral">特工 {x[2]}</b>
                     </button>
                   ))}
                 </div>
@@ -289,8 +289,8 @@ function RoomView({
               <label className={`check ${setup[2] < 2 ? 'is-disabled' : ''}`}>
                 <input type="checkbox" checked={s.alliance} disabled={setup[2] < 2} onChange={(e) => onSettings({ alliance: e.target.checked })} />
                 <span>
-                  醬油同盟
-                  <small>一位打醬油的玩家宣告勝利時，所有打醬油的玩家一同勝利。</small>
+                  特工同盟
+                  <small>一位特工宣告勝利時，所有特工一同勝利。</small>
                 </span>
               </label>
               <button type="button" className="primary start" onClick={onStart}>
@@ -299,8 +299,8 @@ function RoomView({
             </div>
           ) : (
             <p className="room-readonly">
-              {s.count} 人局．潛伏 {setup[0]}、軍情 {setup[1]}、醬油 {setup[2]}
-              {s.alliance ? '．醬油同盟' : ''}
+              {s.count} 人局．潛伏 {setup[0]}、軍情 {setup[1]}、特工 {setup[2]}
+              {s.alliance ? '．特工同盟' : ''}
               <br />
               <span className="muted">等房主開始遊戲…</span>
             </p>

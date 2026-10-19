@@ -129,7 +129,7 @@ export function createGame(config: GameConfig): GameState {
   s.players.forEach((pl, i) => {
     pl.charOptions = [chars[2 * i], chars[2 * i + 1]]
   })
-  log(s, `遊戲開始：${n} 人局（潛伏戰線 ${r}、軍情局 ${b}、打醬油的 ${k}）。請挑選角色。`)
+  log(s, `遊戲開始：${n} 人局（潛伏戰線 ${r}、軍情局 ${b}、特工 ${k}）。請挑選角色。`)
   return s
 }
 
@@ -318,7 +318,7 @@ function declare(s: GameState, p: number, why: 'faction' | 'mission') {
     reason = `${pl.name}（${CHAR_BY_ID[pl.character!].name}）完成機密任務：${CHAR_BY_ID[pl.character!].missionText}`
     if (s.config.neutralAlliance) {
       for (const q of s.players) if (q.faction === 'neutral') winners.add(q.seat)
-      reason += '（醬油同盟一同勝利）'
+      reason += '（特工同盟一同勝利）'
     }
   }
   // 「某人宣告勝利時」達成的機密任務
